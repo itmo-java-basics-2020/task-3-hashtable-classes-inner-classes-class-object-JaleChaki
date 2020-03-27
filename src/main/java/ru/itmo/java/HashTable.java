@@ -1,24 +1,7 @@
 package ru.itmo.java;
 
-import java.util.ArrayList;
-import java.util.Map;
-
 public class HashTable {
 
-    private class Entry {
-
-        public Object Key;
-
-        public Object Value;
-
-        public boolean MarkedAsRemoved = false;
-
-        Entry(Object key, Object value) {
-            Key = key;
-            Value = value;
-        }
-
-    }
 
     static final double DefaultLoadFactor = 0.5;
 
@@ -39,11 +22,11 @@ public class HashTable {
     private double LoadFactor = DefaultLoadFactor;
 
     HashTable() {
-        Collection = new Entry[CalculateArrayCapacity(DefaultCapacity, DefaultLoadFactor)];
+        this(DefaultCapacity, DefaultLoadFactor);
     }
 
     HashTable(int capacity) {
-        Collection = new Entry[CalculateArrayCapacity(capacity, DefaultLoadFactor)];
+        this(capacity, DefaultLoadFactor);
     }
 
     HashTable(int capacity, double loadFactor) {
@@ -52,7 +35,6 @@ public class HashTable {
     }
 
     private int CalculateArrayCapacity(int clientCapacity, double loadFactor) {
-        //return 1507591;
         int needArraySize = (int)((double)clientCapacity / loadFactor);
         if (needArraySize > PrimaryNumbers[PrimaryNumbers.length - 1]) {
             return needArraySize;
@@ -61,7 +43,6 @@ public class HashTable {
         while (needArraySize <= PrimaryNumbers[yk] && yk > 0) {
             --yk;
         }
-        //System.out.println("assigned array size = " + PrimaryNumbers[yk + 1]);
         return PrimaryNumbers[yk + 1];
     }
 
@@ -75,44 +56,29 @@ public class HashTable {
             result += Items.length;
         }
         return result;
-        //while (Items[result] != null && Items[result])
     }
 
     Object put(Object key, Object value) {
-        if (size() > (int)(threshold * Collection.length)) {
-            Extend();
-        }
+        ExtendIfNeeded();
         return internalPut(key, value, Collection);
     }
 
     Object internalPut(Object key, Object value, Entry[] Items) {
         int hash = key.hashCode();
         int index = TransformHashToArrayIndex(hash, Items);
-        //System.out.println("add hash " + key.hashCode() + " key = " + key + " into " + index + " val = " + value);
         Object returnResult = internalGet(key, Items);
-        //System.out.println("current size = " + size());
         if (returnResult != null) {
             internalRemove(key, Items);
         }
-        while (Items[index] != null && !Items[index].MarkedAsRemoved) {
-            /*System.out.println("current index = " + index + " key = " + Items[index].Key);
-            if (Items[index].Key.equals(key)) {
-                System.out.println("break");
-                break;
-            }*/
+        while (Items[index] != null && !Items[index].IsMarkedAsRemoved()) {
             ++index;
             if (index >= Items.length) {
                 index = 0;
             }
         }
-        if (Items[index] == null || Items[index].MarkedAsRemoved) {
-            /*if (Items[index] != null && Items[index].MarkedAsRemoved) {
-                System.out.println("replace into " + Items[index].Key + " " + Items[index].Value);
-            }*/
+        if (Items[index] == null || Items[index].IsMarkedAsRemoved()) {
             ++innerSize;
         }
-        //System.out.println("target index = " + index);
-        //System.out.println("added result = " + value);
         Items[index] = new Entry(key, value);
         return returnResult;
     }
@@ -126,8 +92,13 @@ public class HashTable {
         int index = TransformHashToArrayIndex(hash, Items);
         boolean exists = false;
         //System.out.println("get hash " + hash + " from index = " + index);
+        int iterations = 0;
         while (Items[index] != null) {
-            if (Items[index].Key.equals(key) && !Items[index].MarkedAsRemoved) {
+            ++iterations;
+            if (iterations > Items.length) {
+                break;
+            }
+            if (Items[index].key.equals(key) && !Items[index].IsMarkedAsRemoved()) {
                 exists = true;
                 break;
             }
@@ -137,12 +108,9 @@ public class HashTable {
             }
         }
         if (exists) {
-            //System.out.println("result value = " + Items[index].Value);
-            return Items[index].Value;
-        } else {
-            //System.out.println("not found!");
-            return null;
+            return Items[index].value;
         }
+        return null;
     }
 
     Object remove(Object key) {
@@ -153,15 +121,14 @@ public class HashTable {
         int hash = key.hashCode();
         int index = TransformHashToArrayIndex(hash, Items);
         boolean exists = false;
-        //System.out.println("remove hash " + hash + " key = " + key + " from index = " + index);
-        if (Items[index] == null) {
-           // System.out.println("NULLLLL");
-        }
+        int iterations = 0;
         while (Items[index] != null) {
-            //System.out.println("index key = " + Items[index].Key);
-            if (Items[index].Key.equals(key)) {
-                //System.out.println("detected key = " + key + " val = " + Items[index].Value + " deleted = " + Items[index].MarkedAsRemoved);
-                exists = !Items[index].MarkedAsRemoved;
+            ++iterations;
+            if (iterations > Items.length) {
+                break;
+            }
+            if (Items[index].key.equals(key)) {
+                exists = !Items[index].IsMarkedAsRemoved();
                 break;
             }
             ++index;
@@ -170,28 +137,27 @@ public class HashTable {
             }
         }
         if (exists) {
-            Items[index].MarkedAsRemoved = true;
+            Items[index].MarkAsRemoved();
             --innerSize;
-            //System.out.println("removed result " + Items[index].Value);
-            return Items[index].Value;
-        } else {
-            //System.out.println("key not found!");
-            /*if (Items[index] == null) {
-                return null;
-            } else {
-                return Items[index].Value;
-            }*/
-            return null;
+            Object result = Items[index].value;
+            if (Items[(index + 1) % Items.length] == null) {
+                Items[index] = null;
+            }
+            return result;
         }
+        return null;
     }
 
-    private void Extend() {
+    private void ExtendIfNeeded() {
+        if (size() <= (int)(threshold * Collection.length)) {
+            return;
+        }
         int newCapacity = (int)((double)size() * ExtendsCap);
         Entry[] newCollection = new Entry[CalculateArrayCapacity(newCapacity, LoadFactor)];
         innerSize = 0;
         for (int i = 0; i < Collection.length; ++i) {
-            if (Collection[i] != null && !Collection[i].MarkedAsRemoved) {
-                internalPut(Collection[i].Key, Collection[i].Value, newCollection);
+            if (Collection[i] != null && !Collection[i].IsMarkedAsRemoved()) {
+                internalPut(Collection[i].key, Collection[i].value, newCollection);
             }
         }
         Collection = newCollection;
@@ -199,6 +165,30 @@ public class HashTable {
 
     int size() {
         return innerSize;
+    }
+
+
+    private class Entry {
+
+        public final Object key;
+
+        public Object value;
+
+        private boolean markedAsRemoved = false;
+
+        Entry(Object key, Object value) {
+            this.key = key;
+            this.value = value;
+        }
+
+        public boolean IsMarkedAsRemoved() {
+            return markedAsRemoved;
+        }
+
+        public void MarkAsRemoved() {
+            markedAsRemoved = true;
+        }
+
     }
 
 }
